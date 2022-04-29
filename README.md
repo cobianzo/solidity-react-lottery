@@ -1,25 +1,29 @@
-Lottery smart contract in React:
-===
+# Lottery smart contract in React:
+
 React is the frontend for this smart contract project, which uses Web3 library with a Provider to provide the Network of nodes.
 When testing, the network is simulated by `garache`, a tiny network library.
 When not testing, we need to update the provider, to use the Metamask network, in Test mode (otherwise costs money!)
 
-TEST this project as it is:
----
+## TEST this project as it is:
+
 - npm i
 - `npx mocha`, or `npm run test`
-And to deploy it, we need to set up infura.io, and get the endpoint
+  And to deploy it, we need to set up infura.io, and get the endpoint
 - `node deploy.js`
-And we will get the address of the new contract, ie  
-`Contract deployed to 0x1f87BbdC0221bE67D473110A67ef6A08fB040000`  
-From there we could continue with Remix interface and Metamask
+  And we will get the address of the new contract, ie  
+  `Contract deployed to 0x1f87BbdC0221bE67D473110A67ef6A08fB040000`  
+  From there we could continue with Remix interface and Metamask
 
-WHERE the smart contract is:
----
+## WHERE the smart contract is:
 
+# TUTORIAL OF CREATION/NOTES
 
-
-
+- `create-react-app`, clean up stupid idle code that comes by default
+  -- IMPORTANT: in package.json it should use "react-scripts": "4.0.3", in order to be compatible with web3 and our code.
+- install Web3 Library straight away!: `npm i web3`
+- we assume metamask chrome extension is installed, so we will use its provider to connect to Rinkeby network. But it is just for this project. We can't assume in any real project!
+- Deploy the Lottery project outside this react project. We created that project and we can use 'node deploy', and console log the address of the contract and the ABI interface of that contract.
+  -- We copy that data to use in in out react app.
 
 # Getting Started with Create React App
 
