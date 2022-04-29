@@ -9,7 +9,7 @@ function App() {
   const [contractData, setContractData] = React.useState({
     manager: "",
     players: [],
-    playersBalances: [],
+    playersBalances: {}, // map player address to balance
     balance: "0",
     entryValue: "0.011", // in eth
     defaultAccount: "",
@@ -22,21 +22,38 @@ function App() {
   function getBalanceInWeis() {
     return web3.utils.fromWei(contractData.balance, "ether");
   }
-  async function updateBalances() {
+
+  /** return an object maping player addresss and money in their balance
+   * [ 0xfd432 : 0.000434314323, 0xee0d32: 2.000434314323  ... ]  */
+  async function getBalances() {
     console.log(
       "calculating new balances. Previous",
-      contractData.playersBalances
+      contractData.playersBalances,
+      contractData.players
     );
-    const playersBalances = await Promise.all(
-      contractData.players.map(async (player, index) => {
-        const balance = await await web3.eth.getBalance(player);
-        console.log("calulated for " + index + ": " + balance + " weis");
-        return balance;
+    const players = await lottery.methods.getPlayers().call();
+    let playersBalances = {};
+    await Promise.all(
+      players.map(async (player, index) => {
+        const balance = await web3.eth.getBalance(player);
+        console.log("calculating player: " + index, balance);
+        playersBalances[player] = balance;
       })
     );
-    setContractData({ ...contractData, playersBalances });
-    return playersBalances; // [ 0 : 0.000434314323, 1: 2.000434314323  ... ]
+    // setContractData({ ...contractData, playersBalances });
+    console.log("After calculating:", playersBalances);
+    return playersBalances; // [ 0xfd432 : 0.000434314323, 0xee0d32: 2.000434314323  ... ]
   }
+
+  const typicalErrorHandlerOnTransaction = (error, result) => {
+    console.log("These are the errors: ", error, result);
+    if (error?.code) {
+      alert(
+        "There was an error. " + (error.message ? error.message : "No msg")
+      );
+      setIsLoading(false);
+    }
+  };
 
   /** On READY  */
   const fetchData = async () => {
@@ -44,20 +61,15 @@ function App() {
     const players = await lottery.methods.getPlayers().call();
     const balance = await lottery.methods.getBalance().call();
     const accounts = await web3.eth.getAccounts();
+    const playersBalances = await getBalances();
 
-    let playersBal = [];
-    players.forEach(async (plAddress, index) => {
-      const balweis = await web3.eth.getBalance(plAddress);
-      // console.log(`player ${plAddress} has ${balweis} weis`);
-      playersBal[index] = balweis;
-    });
     setContractData({
       ...contractData,
       manager,
       players,
       balance,
       defaultAccount: accounts[0],
-      playersBalances: playersBal,
+      playersBalances,
     });
   };
   React.useEffect(() => {
@@ -75,52 +87,62 @@ function App() {
     // }
 
     setLastWinnerAddress("");
-    setIsLoading(true);
-    await lottery.methods.enter().send({
-      from: contractData.defaultAccount,
-      value: web3.utils.toWei(contractData.entryValue, "ether"),
-    });
+    setIsLoading("Joining the pool. Please wait...");
+    await lottery.methods.enter().send(
+      {
+        from: contractData.defaultAccount,
+        value: web3.utils.toWei(contractData.entryValue, "ether"),
+      },
+      typicalErrorHandlerOnTransaction
+    );
     setIsLoading(false);
     fetchData();
   };
 
   // FINISH GAME
+  // ------------------------------------------------
   const handlePickAWinner = async function (e) {
     e.preventDefault();
     if (contractData.players.length === 0) {
       alert("There are no participants!");
       return;
     }
-    setIsLoading(true);
+    setIsLoading("Finding a winner. Please wait...");
     console.log("balances before: ", contractData.playersBalances);
+
+    // Lets Pay to the winner:
     const oldBalances = contractData.playersBalances;
-    await lottery.methods.pickWinner().send({
-      from: contractData.defaultAccount,
-    });
+    await lottery.methods.pickWinner().send(
+      {
+        from: contractData.defaultAccount,
+      },
+      typicalErrorHandlerOnTransaction
+    );
+    // The winner is paid.
+
     setIsLoading(false);
 
-    const newBalances = updateBalances();
+    // calculate the winner. WE still dont know who he was, we just paid him.
+    await Promise.all(
+      Object.keys(oldBalances).forEach(async (player, playerIndex) => {
+        // get the new balance of the player:
+        const balance = await web3.eth.getBalance(player);
+        if (oldBalances[player] < balance) {
+          // this is the winner
+          console.log("we found the winner: ", player);
+          setLastWinnerAddress(player);
+        }
+      }),
 
-    const winnerAddress = "";
-    oldBalances.forEach((weis, playerIndex) => {
-      if (typeof newBalances[playerIndex] === "undefined") {
-        return;
-      }
-      if (weis < newBalances[playerIndex]) {
-        // this is the winner
-        setLastWinnerAddress(contractData.players[playerIndex]);
-      }
-    });
-
-    fetchData(); // this sets players to 0.
-    console.log("balances after: ", contractData.playersBalances);
+      fetchData() // this sets players to 0 (updates UI info).
+    );
   };
   /** -- */
   return (
     <div className="App">
       {isLoading && (
         <div className="is-loading">
-          <div className="is-loading__inner">Loading...</div>
+          <div className="is-loading__inner">{isLoading}</div>
         </div>
       )}
       <header className="App-header">
@@ -154,18 +176,34 @@ function App() {
         )}
       </header>
       <main>
-        {contractData.playersBalances.map((balanceWeis, index) => (
-          <p key={`player-${index}`}>
-            Player {index} :<span>{balanceWeis}</span>
-          </p>
-        ))}
+        {contractData.players.length > 0 &&
+          Object.keys(contractData.playersBalances).map((player, index) => (
+            <p key={`player-${index}`}>
+              Player {index} :
+              <span>{contractData.playersBalances[player]}</span>
+            </p>
+          ))}
 
-        {contractData.players.length && (
+        {contractData.players.length > 0 && (
           <form onSubmit={handlePickAWinner}>
             <button type="submit">Pick a winner</button>
           </form>
         )}
-        {lastWinnerAddress && <h2>The winner is: {lastWinnerAddress} </h2>}
+        {lastWinnerAddress && (
+          <>
+            <h2>The winner is: {lastWinnerAddress} </h2>
+            <a
+              className="button"
+              href="#"
+              onClick={(e) => {
+                e.preventDefault();
+                setLastWinnerAddress("");
+              }}
+            >
+              X
+            </a>
+          </>
+        )}
       </main>
     </div>
   );
